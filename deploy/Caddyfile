@@ -1,0 +1,7 @@
+# HTTPS reverse proxy for Mini App (Telegram WebApp + Platega callbacks).
+# Domain comes from MINI_APP_DOMAIN in .env (set by install.sh).
+# Caddy obtains Let's Encrypt certificates automatically.
+
+{$MINI_APP_DOMAIN} {
+	reverse_proxy miniapp:8080
+}

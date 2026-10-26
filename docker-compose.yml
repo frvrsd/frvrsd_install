@@ -1,0 +1,131 @@
+# FRVRSD VPN — Docker Compose install pack
+# Usage: ./install.sh   or   docker compose up -d
+# HTTPS:  docker compose --profile https up -d
+# Schema: docker compose run --rm migrate
+
+name: frvrsd-vpn
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-frvrsd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-frvrsd}
+      POSTGRES_DB: ${POSTGRES_DB:-frvrsd}
+    volumes:
+      # PG 18+ image: mount /var/lib/postgresql (not .../data) — docker-library/postgres#1259
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-frvrsd} -d ${POSTGRES_DB:-frvrsd}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  migrate:
+    image: ${FRVRSD_IMAGE:-frvrsd/frvrsd_vpn_bot:1.0.0}
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["migrate"]
+
+  miniapp:
+    image: ${FRVRSD_IMAGE:-frvrsd/frvrsd_vpn_bot:1.0.0}
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    command:
+      - uvicorn
+      - mini_app.server:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8080"
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  bot:
+    image: ${FRVRSD_IMAGE:-frvrsd/frvrsd_vpn_bot:1.0.0}
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      # Linux: pin license HWID to the host when /etc/machine-id exists
+      # - /etc/machine-id:/etc/machine-id:ro
+    command: ["python", "-m", "bot"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      miniapp:
+        condition: service_healthy
+
+  caddy:
+    profiles: ["https"]
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    environment:
+      MINI_APP_DOMAIN: ${MINI_APP_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      miniapp:
+        condition: service_started
+
+  # Optional: kutovoys/xray-checker — probe VPN proxies via subscription URL.
+  # Enable: COMPOSE_PROFILES=…,xray-checker  or  frvrsd xray-checker on
+  xray-checker:
+    profiles: ["xray-checker"]
+    image: kutovoys/xray-checker:v1.3.1
+    restart: unless-stopped
+    environment:
+      SUBSCRIPTION_URL: ${XRAY_CHECKER_SUBSCRIPTION_URL:-}
+      # Remnawave: expand balancer outbounds into individually checked proxies
+      SUBSCRIPTION_JSON_FORMAT: ${XRAY_CHECKER_SUBSCRIPTION_JSON_FORMAT:-true}
+      # Optional; set when the panel gates the subscription by User-Agent.
+      SUBSCRIPTION_USER_AGENT: ${XRAY_CHECKER_SUBSCRIPTION_USER_AGENT:-}
+      SUBSCRIPTION_UPDATE: ${XRAY_CHECKER_SUBSCRIPTION_UPDATE:-true}
+      SUBSCRIPTION_UPDATE_INTERVAL: ${XRAY_CHECKER_SUBSCRIPTION_UPDATE_INTERVAL:-300}
+      PROXY_CHECK_INTERVAL: ${XRAY_CHECKER_PROXY_CHECK_INTERVAL:-300}
+      PROXY_TIMEOUT: ${XRAY_CHECKER_PROXY_TIMEOUT:-30}
+      METRICS_HOST: "0.0.0.0"
+      METRICS_PORT: "2112"
+      METRICS_PROTECTED: ${XRAY_CHECKER_METRICS_PROTECTED:-true}
+      METRICS_USERNAME: ${XRAY_CHECKER_USERNAME:-}
+      METRICS_PASSWORD: ${XRAY_CHECKER_PASSWORD:-}
+      WEB_PUBLIC: "false"
+      LOG_LEVEL: ${XRAY_CHECKER_LOG_LEVEL:-info}
+    # Internal only — miniapp proxies GET /api/admin/servers
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
