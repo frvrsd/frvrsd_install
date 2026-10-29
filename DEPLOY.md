@@ -31,7 +31,7 @@ cp .env.example .env && nano .env   # или позже: frvrsd env
 chmod +x install.sh
 ./install.sh setup                  # frvrsd в PATH, config → .frvrsd/
 
-sudo ./install.sh bootstrap         # Docker + UFW (SSH-порт из sshd_config, 80, 443)
+sudo ./install.sh bootstrap         # Docker + UFW (порты SSH, 80, 443/tcp, 443/udp)
 # re-login в группу docker, если bootstrap добавил пользователя
 
 frvrsd install --https -y           # wizard .env (если пусто) → последний x.y.z → up → /health

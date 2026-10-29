@@ -25,7 +25,7 @@ XRAY_CHECKER_IMAGE="kutovoys/xray-checker:v1.3.1"
 DEFAULT_INSTALL_DIR="${FRVRSD_INSTALL_DIR:-/opt/frvrsd_vpn}"
 GITHUB_REPO="${FRVRSD_GITHUB_REPO:-frvrsd/frvrsd_install}"
 GITHUB_BRANCH="${FRVRSD_GITHUB_BRANCH:-main}"
-INSTALLER_VERSION="1.7.0"
+INSTALLER_VERSION="1.7.1"
 DEPLOY_REMOTE_FILES=(docker-compose.yml .env.example deploy/Caddyfile)
 
 # Loaded from ~/.config/frvrsd/config
@@ -1075,7 +1075,8 @@ ensure_db_credentials() {
     yellow "POSTGRES_PASSWORD → (generated)"
   fi
 
-  if env_value_empty "$url"; then
+  # .env.example ships DATABASE_URL with change-me: rebuild it from the real password
+  if env_value_empty "$url" || [[ "$url" == *":change-me@"* ]]; then
     url="postgresql://${user}:${pass}@postgres:5432/${db}"
     set_env_key "DATABASE_URL" "$url"
   fi
@@ -1118,7 +1119,7 @@ interactive_env_setup() {
   prompt_env_var SUPPORT_URL env_label_support_url 0 0
   prompt_env_var SUPPORT_CONTACT env_label_support_contact 0 0
   prompt_env_var POSTGRES_PASSWORD env_label_pg_password 1 0
-  prompt_env_var DATABASE_URL env_label_database_url 0 0
+  prompt_env_var DATABASE_URL env_label_database_url 1 0
 
   sync_mini_app_domain
   ensure_db_credentials
@@ -1563,13 +1564,25 @@ install_docker_engine() {
   exit 1
 }
 
-detect_ssh_port() {
-  local port=22
-  if [[ -f /etc/ssh/sshd_config ]]; then
-    port="$(awk '/^[[:space:]]*Port[[:space:]]+/ {print $2; exit}' /etc/ssh/sshd_config)"
-    [[ -z "$port" ]] && port=22
+# All SSH ports to keep open: the effective sshd config (covers sshd_config.d),
+# the port of the current session and sshd listeners (covers ssh.socket).
+detect_ssh_ports() {
+  local ports=""
+  if command -v sshd >/dev/null 2>&1; then
+    ports+=" $(run_root sshd -T 2>/dev/null | awk '$1 == "port" {print $2}')"
   fi
-  echo "$port"
+  if [[ -n "${SSH_CONNECTION:-}" ]]; then
+    ports+=" $(awk '{print $4}' <<<"$SSH_CONNECTION")"
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    ports+=" $(run_root ss -tlnpH 2>/dev/null | awk '/"sshd/ {n=split($4, a, ":"); print a[n]}')"
+  fi
+  if [[ -f /etc/ssh/sshd_config ]]; then
+    ports+=" $(awk '/^[[:space:]]*Port[[:space:]]+/ {print $2}' /etc/ssh/sshd_config)"
+  fi
+  ports="$(tr ' ' '\n' <<<"$ports" | grep -E '^[0-9]+$' | sort -un | tr '\n' ' ')"
+  [[ -n "${ports// /}" ]] || ports="22"
+  echo "$ports"
 }
 
 setup_ufw() {
@@ -1584,10 +1597,13 @@ setup_ufw() {
   fi
   cyan "$(i18n setting_ufw)"
   local ssh_port ok=0
-  ssh_port="$(detect_ssh_port)"
-  run_root ufw allow "${ssh_port}/tcp" comment 'SSH' && ok=1
+  for ssh_port in $(detect_ssh_ports); do
+    run_root ufw allow "${ssh_port}/tcp" comment 'SSH' && ok=1
+  done
   run_root ufw allow 80/tcp comment 'HTTP'
   run_root ufw allow 443/tcp comment 'HTTPS'
+  # Caddy also serves HTTP/3 over UDP
+  run_root ufw allow 443/udp comment 'HTTP/3'
   if [[ "$ok" -eq 0 ]]; then
     red "$(i18n ufw_fail)"
     return 1
