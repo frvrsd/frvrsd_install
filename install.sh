@@ -7,10 +7,10 @@
 # Public repo, no GitHub token. A CLI release is a semver git tag (same number
 # as INSTALLER_VERSION). init / self-update download that tag, not a branch tip.
 #   curl -fsSL -o install.sh \
-#     "https://raw.githubusercontent.com/frvrsd/frvrsd_install/1.7.0/install.sh"
+#     "https://raw.githubusercontent.com/frvrsd/frvrsd_install/1.7.1/install.sh"
 #   chmod +x install.sh && ./install.sh
 #
-# Pin a tag or branch: FRVRSD_GITHUB_BRANCH=1.7.0
+# Pin a tag or branch: FRVRSD_GITHUB_BRANCH=1.7.1
 # Creates /opt/frvrsd_vpn, downloads compose/Caddyfile/.env.example, then menu.
 
 set -euo pipefail

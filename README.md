@@ -8,7 +8,7 @@
 
 ```bash
 curl -fsSL -o install.sh \
-  https://raw.githubusercontent.com/frvrsd/frvrsd_install/1.7.0/install.sh
+  https://raw.githubusercontent.com/frvrsd/frvrsd_install/1.7.1/install.sh
 chmod +x install.sh && ./install.sh
 ```
 

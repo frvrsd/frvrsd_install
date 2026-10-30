@@ -17,14 +17,14 @@ Vendor при сборке образа (`docker build`): multi-stage Dockerfile
 
 ```bash
 curl -fsSL -o install.sh \
-  https://raw.githubusercontent.com/frvrsd/frvrsd_install/1.7.0/install.sh
+  https://raw.githubusercontent.com/frvrsd/frvrsd_install/1.7.1/install.sh
 chmod +x install.sh && ./install.sh
 ```
 
 Либо клон публичного репозитория на нужном теге:
 
 ```bash
-git clone --branch 1.7.0 --depth 1 https://github.com/frvrsd/frvrsd_install /opt/frvrsd_vpn
+git clone --branch 1.7.1 --depth 1 https://github.com/frvrsd/frvrsd_install /opt/frvrsd_vpn
 cd /opt/frvrsd_vpn
 cp .env.example .env && nano .env   # или позже: frvrsd env
 
